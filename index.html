@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Edge TTS voice lab</title>
+<style>
+:root{color-scheme:dark;background:#111820;color:#edf1f4;font:16px/1.5 system-ui,sans-serif}*{box-sizing:border-box}main{max-width:780px;margin:28px auto;padding:18px}h1{font-size:2.2rem;margin:.25em 0}small,p{color:#a4b5c1}section{background:#1b2630;border:1px solid #34424e;border-radius:16px;margin:18px 0;padding:18px}label{display:block;font-weight:600;margin:12px 0 5px}textarea,select{width:100%;padding:10px;background:#111820;color:inherit;border:1px solid #52606a;border-radius:8px;font:inherit}button{border:0;border-radius:9px;background:#b5e6c8;color:#132b20;font:inherit;font-weight:650;padding:10px 16px;cursor:pointer}button:disabled{opacity:.5}#samples{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}#samples button{background:#34424e;color:inherit;font-size:.88rem;padding:6px 10px}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.row>div{flex:1;min-width:140px}audio{width:100%;margin-top:12px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse;font-size:.85rem}th,td{text-align:left;padding:9px 5px;border-bottom:1px solid #34424e}td:last-child{overflow-wrap:anywhere}#status{white-space:pre-wrap;overflow-wrap:anywhere}a{color:#b5e6c8}
+</style></head><body><main><small>KITTYLINGO RESEARCH · STATIC BROWSER EXPERIMENT</small><h1>Edge TTS voice lab</h1><p>Microsoft Edge Read Aloud · unofficial browser client · no backend or stored audio</p>
+<section><strong>Compatibility test</strong><p id="browser"></p><p>Upstream v1.4.0 documents that direct browser synthesis works only in Microsoft Edge. Chrome, Firefox, Safari and embedded WebViews may fail. Your submitted text is sent to Microsoft's speech service. Do not enter personal or sensitive information.</p><small><a href="https://github.com/travisvn/edge-tts-universal/tree/main">Upstream library and AGPL-3.0-or-later license</a></small></section>
+<section><form id="form"><label for="text">Text to pronounce</label><textarea id="text" rows="3" maxlength="180" required>I read every day.</textarea><div id="samples"></div>
+<div class="row"><div><label for="voice">Voice</label><select id="voice"><optgroup label="British"><option value="en-GB-SoniaNeural">Sonia</option><option value="en-GB-RyanNeural">Ryan</option><option value="en-GB-LibbyNeural">Libby</option><option value="en-GB-MaisieNeural">Maisie</option><option value="en-GB-ThomasNeural">Thomas</option></optgroup><optgroup label="American"><option value="en-US-AriaNeural">Aria</option><option value="en-US-JennyNeural">Jenny</option><option value="en-US-GuyNeural">Guy</option><option value="en-US-EmmaMultilingualNeural">Emma</option></optgroup></select></div><div><label for="rate">Speaking rate</label><select id="rate"><option value="+0%">Normal</option><option value="-10%">90%</option><option value="-20%">80%</option><option value="+10%">110%</option></select></div></div>
+<p><button id="go" type="submit">Generate audio</button></p></form><div id="status" role="status" aria-live="polite">Loading library…</div><audio id="audio" controls hidden></audio></section>
+<section><div class="row"><h2>Session history</h2><button id="clear" type="button">Clear</button></div><div class="scroll"><table><thead><tr><th>Text</th><th>Voice</th><th>First MP3 bytes</th><th>Full audio</th><th>Result</th></tr></thead><tbody id="history"></tbody></table></div><p><small>Timings include the connection to Microsoft. The first MP3 bytes are not audible playback; playback starts after the complete clip is available. No requests run automatically.</small></p></section></main>
+<script type="module">
+const $=id=>document.getElementById(id);
+const ua=navigator.userAgent;
+$('browser').textContent=/Edg\//.test(ua)?'Detected desktop Microsoft Edge.':'Not detected as desktop Edge. This is useful as a negative compatibility test.';
+for(const sample of ['book','thought','comfortable','squirrel','clothes','vegetable','Thursday','usually','education','thirty-three','I read every day.','I read a book yesterday.','I reed every day.','I live in London.','Live music.','I will record a record.']){
+ const b=document.createElement('button');b.type='button';b.textContent=sample;b.onclick=()=>{$('text').value=sample;};$('samples').append(b);
+}
+$('clear').onclick=()=>{$('history').replaceChildren();};
+let lib,url;
+$('go').disabled=true;
+try{
+ lib=await import('https://cdn.jsdelivr.net/npm/edge-tts-universal@1.4.0/dist/browser.js');
+ if(typeof lib.Communicate!=='function')throw Error('Browser Communicate export unavailable');
+ $('status').textContent='Ready. Choose a sample and generate.';
+ $('go').disabled=false;
+}catch(e){$('status').textContent='Library import failed: '+String(e.message||e);}
+const format=x=>x==null?'—':Math.round(x)+' ms';
+function row(values){const tr=document.createElement('tr');for(const v of values){const td=document.createElement('td');td.textContent=v;tr.append(td);}$('history').prepend(tr);}
+$('form').onsubmit=async e=>{
+ e.preventDefault();if(!lib)return;
+ const text=$('text').value.trim(),voice=$('voice').value,rate=$('rate').value;if(!text)return;
+ $('go').disabled=true;$('audio').pause();$('audio').hidden=true;$('status').textContent='Connecting to speech service…';
+ const start=performance.now();let first=null,timer,expired=false;
+ try{
+  const comm=new lib.Communicate(text,{voice,rate,connectionTimeout:10000});
+  const task=(async()=>{const chunks=[];for await(const chunk of comm.stream()){
+    if(expired)break;
+    if(chunk.type==='audio'&&chunk.data?.byteLength){first??=performance.now()-start;chunks.push(chunk.data);}
+  }if(!chunks.length)throw Error('No audio received');return new Blob(chunks,{type:'audio/mpeg'});})();
+  const blob=await Promise.race([task,new Promise((_,reject)=>{timer=setTimeout(()=>{expired=true;reject(Error('Timed out after 20 seconds'));},20000);})]);
+  const elapsed=performance.now()-start;
+  if(url)URL.revokeObjectURL(url);
+  url=URL.createObjectURL(blob);$('audio').src=url;$('audio').hidden=false;
+  row([text,voice,format(first),format(elapsed),'OK · '+blob.size+' bytes']);
+  $('status').textContent='Audio ready.';
+  try{await $('audio').play();}catch{$('status').textContent='Audio ready — press play.';}
+ }catch(e){const message=String(e.message||e);row([text,voice,format(first),format(performance.now()-start),message]);$('status').textContent='Failed: '+message+'\nBrowser WebSocket restrictions or an upstream service error may be responsible.';}
+ finally{clearTimeout(timer);$('go').disabled=false;}
+};
+</script></body></html>
