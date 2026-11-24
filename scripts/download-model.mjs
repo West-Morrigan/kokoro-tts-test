@@ -1,23 +1,51 @@
-import { mkdir, stat, rename, rm } from 'node:fs/promises';
+import { mkdir, chmod, readFile, writeFile, rm, stat, copyFile, readdir } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
-import { dirname, resolve } from 'node:path';
-const id = 'onnx-community/Kokoro-82M-v1.0-ONNX';
-const files = ['config.json','tokenizer.json','tokenizer_config.json','onnx/model_quantized.onnx'];
-const revision = process.env.KOKORO_REVISION || 'main';
-for (const name of files) {
-  const out = resolve('models', id, name);
-  const min = name.endsWith('.onnx') ? 30_000_000 : 2;
-  if ((await stat(out).catch(()=>null))?.size >= min) continue;
-  await mkdir(dirname(out), { recursive: true });
-  const tmp = out + '.part';
-  console.log('Downloading', name);
-  try {
-    const response = await fetch('https://huggingface.co/'+id+'/resolve/'+encodeURIComponent(revision)+'/'+name, {signal: AbortSignal.timeout(240_000)});
-    if (!response.ok || !response.body) throw Error(name + ': HTTP '+response.status);
-    await pipeline(Readable.fromWeb(response.body), createWriteStream(tmp));
-    if ((await stat(tmp)).size < min) throw Error('Incomplete model file: '+name);
-    await rename(tmp,out);
-  } finally { await rm(tmp,{force:true}); }
+import { resolve } from 'node:path';
+const out=resolve('models/pocket');
+const tag='v4.0.0', lang='english_18m_2026-10';
+const upstream='https://github.com/kyutai-labs/pocket-tts';
+const hub='https://huggingface.co/kyutai/pocket-tts-without-voice-cloning/resolve/';
+const weightsRevision='08ffc58775e62aad9409511b9591c9af626270f3';
+const voiceRevision='a3055dcb533cf2ec90458008a01e7cef550bae2a';
+await mkdir(out,{recursive:true});
+async function get(url,name){
+ const dest=resolve(out,name);
+ const r=await fetch(url,{signal:AbortSignal.timeout(180000),headers:{'User-Agent':'pocket-tts-benchmark'}});
+ if(!r.ok||!r.body)throw Error(name+' HTTP '+r.status);
+ await pipeline(Readable.fromWeb(r.body),createWriteStream(dest));
+ if(!(await stat(dest)).size)throw Error('Empty '+name);
+ return dest;
 }
+const res=await fetch('https://api.github.com/repos/kyutai-labs/pocket-tts/releases/tags/'+tag,{headers:{'User-Agent':'pocket-tts-benchmark','Accept':'application/vnd.github+json'}});
+if(!res.ok)throw Error('Release lookup HTTP '+res.status);
+const release=await res.json();
+const asset=release.assets.find(a=>/x86_64-unknown-linux-gnu\.tar\.gz$/.test(a.name));
+if(!asset)throw Error('Linux x86_64 release asset not found');
+const tar=await get(asset.browser_download_url,'release.tar.gz');
+const extract=resolve(out,'extract');
+await mkdir(extract,{recursive:true});
+execFileSync('tar',['-xzf',tar,'-C',extract]);
+const entries=await readdir(extract,{recursive:true});
+const bin=entries.find(p=>p.split('/').at(-1)==='pocket-tts');
+if(!bin)throw Error('Missing binary');
+await copyFile(resolve(extract,bin),resolve(out,'pocket-tts'));
+const license=entries.find(p=>p.split('/').at(-1)==='LICENSE');
+if(license)await copyFile(resolve(extract,license),resolve(out,'LICENSE'));
+await chmod(resolve(out,'pocket-tts'),0o755);
+await rm(extract,{recursive:true,force:true});await rm(tar);
+const base='/languages/'+lang+'/';
+await get(hub+weightsRevision+base+'model.safetensors','model.safetensors');
+await get(hub+weightsRevision+base+'tokenizer.model','tokenizer.model');
+await get(hub+voiceRevision+base+'embeddings/alba.safetensors','alba.safetensors');
+const config=await get('https://raw.githubusercontent.com/kyutai-labs/pocket-tts/'+tag+'/pocket_tts/config/'+lang+'.yaml','model.yaml');
+let yaml=await readFile(config,'utf8');
+for(const [pattern,value] of [[/^weights_path:.*$/m,'weights_path: model.safetensors'],[/^weights_path_without_voice_cloning:.*$/m,'weights_path_without_voice_cloning: model.safetensors'],[/^(\s*)tokenizer_path:.*$/m,'$1tokenizer_path: tokenizer.model']]){
+ if(!pattern.test(yaml))throw Error('Upstream config changed');
+ yaml=yaml.replace(pattern,value);
+}
+await writeFile(config,yaml);
+execFileSync(resolve(out,'pocket-tts'),['--version'],{stdio:'inherit'});
+console.log('Pocket TTS assets ready; offline inference uses bundled weights.');
