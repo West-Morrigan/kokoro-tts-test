@@ -1,25 +1,20 @@
-name: Kokoro CPU smoke test
+name: Pocket TTS Rust smoke test
 on:
   workflow_dispatch:
   push:
-    paths:
-      - 'package.json'
-      - 'scripts/**'
-      - 'netlify/**'
-      - '.github/workflows/check.yml'
+    branches: [experiment/pocket-tts]
+  pull_request:
+    branches: [main]
 permissions:
   contents: read
 jobs:
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      ONNXRUNTIME_NODE_INSTALL_CUDA: skip
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --no-audit --no-fund
-      - run: npm run prepare:model
+      - run: npm run build
       - run: npm run smoke
