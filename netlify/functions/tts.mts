@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
 import {readFile} from 'node:fs/promises';
 import {createServer} from 'node:net';
-const instance=randomUUID().slice(0,8), version='pocket-7m-rust-v1';
+const instance=randomUUID().slice(0,8), version='pocket-18m-rust-v1';
 const modelDir=resolve(process.cwd(),'models/pocket');
 let server:ChildProcess|undefined, ready:Promise<number>|undefined, port:number;
 let busy=false, requests=0;
