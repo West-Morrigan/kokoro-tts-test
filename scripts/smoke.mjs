@@ -2,20 +2,16 @@ import assert from 'node:assert/strict';
 const key='local-smoke-test-key-not-a-real-secret';
 globalThis.Netlify={env:{get:name=>name==='TTS_TEST_KEY'?key:undefined}};
 const {default:handler}=await import('../netlify/functions/tts.mts');
-for (const [index,text] of ['Thursday','comfortable','I read a book yesterday.'].entries()) {
-  const response=await handler(new Request('http://localhost/api/tts',{
-    method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
-    body:JSON.stringify({text,voice:'bf_emma',speed:1})
-  }));
-  if(!response.ok) throw Error('Smoke request failed: '+await response.text());
-  const stats=JSON.parse(response.headers.get('X-TTS-Stats'));
-  const wav=Buffer.from(await response.arrayBuffer());
-  assert.equal(wav.toString('ascii',0,4),'RIFF');
-  assert.equal(wav.toString('ascii',8,12),'WAVE');
-  assert.equal(wav.readUInt32LE(24),24000);
-  assert.ok(wav.length>44);
-  assert.equal(stats.threads,1);
-  assert.equal(stats.cold,index===0);
-  for(const k of ['preprocess','modelStage','cpuMs','cpuRatio','synthesis']) assert.ok(Number.isFinite(stats[k])&&stats[k]>=0,k);
-  console.log(JSON.stringify({text,...stats}));
+const request=(auth,body)=>new Request('http://localhost/api/tts',{method:'POST',headers:{Authorization:'Bearer '+auth,'Content-Type':'application/json'},body:JSON.stringify(body)});
+assert.equal((await handler(request('wrong',{text:'book'}))).status,401);
+assert.equal((await handler(request(key,{text:'',voice:'invalid'}))).status,400);
+console.log('Authentication and input validation passed.');
+// The actual network benchmark runs only when explicitly requested.
+if(process.env.LIVE_TTS_TEST==='1'){
+ const r=await handler(request(key,{text:'I read every day.',voice:'en-GB-SoniaNeural'}));
+ if(!r.ok)throw Error(await r.text());
+ const audio=await r.arrayBuffer();
+ assert.ok(audio.byteLength>0);
+ assert.equal(r.headers.get('Content-Type'),'audio/mpeg');
+ console.log(r.headers.get('X-TTS-Stats'));
 }
