@@ -1,31 +1,19 @@
-# Kokoro TTS test
+# Pocket TTS experiment
 
-Independent experiment for server-side pronunciation. No KittyLingo credentials, data, or production infrastructure.
+This branch tests Kyutai Pocket TTS English 6.9M, using the upstream standalone Linux Rust server (release v4.0.0) and its predefined Alba voice. No Python, PyTorch, ONNX or generated-audio storage. Main remains the Kokoro benchmark.
 
-- Kokoro.js 1.2.1, ONNX CPU, Q8.
-- Downloads model weights at build time; runtime loads only local files.
-- Generates WAV on demand and does not persist audio.
-- Browser playground at /, API at POST /api/tts.
-- Reports model cold/warm state, initialization, inference, RSS high-water mark and browser round trip.
+## Build and run
 
-## Deploy
+Node 22. Run npm run build to download the binary, pinned public no-voice-cloning weights, tokenizer, voice embedding and matching config. All files are included in the Netlify function bundle. A local config directs the engine to the bundled files.
 
-Netlify project: kokoro-tts-test (83dcbca9-ec50-4ea4-9ba5-882a82843751).
+Run npm run smoke to exercise the actual handler locally on Linux x86_64 (AVX2 required). It checks valid WAV output and cold/warm state. CI runs this automatically.
 
-Link this repository in the Netlify project using Git deployment. Build settings are in netlify.toml. Set TTS_TEST_KEY to a random secret of at least 24 characters with Functions scope before deployment. Enter that key in the playground; it is not persisted. The endpoint also has an IP rate limit. Never commit the key.
-
-The build may fail on native module packaging or function-size limits. The GitHub smoke workflow checks model load and synthesis on a Linux runner, not on Netlify. A successful smoke test is not proof of Netlify compatibility.
-
-## Local
-
-Node 22. Run npm install, npm run prepare:model, npm run smoke. For the playground run netlify dev with TTS_TEST_KEY configured.
-
-Example API JSON: {"text":"Thursday","voice":"bf_emma","speed":1}
-
-Authentication: Authorization: Bearer YOUR_TEST_KEY. Output: audio/wav and X-TTS-Stats header. Text capped at 180 characters. No request text is logged by the function.
+Set TTS_TEST_KEY (at least 24 chars) for Functions in the Netlify branch deploy or deploy preview context. Enable branch deploys for experiment/pocket-tts, or use a deploy preview, without changing the production branch. The frontend and API use the same origin. No secrets in source.
 
 ## Benchmark
 
-Repeat the same word and compare instance IDs. A cold model has cold=true; a warm one has cold=false. Browser round trip includes platform and network latency. RSS peak is process-wide, not Netlify's billed memory. Try a handful of British voices and individual words. Cold starts cannot be forced reliably on the platform. Targets: under 5 s cold, 500 ms warm, 850 MB peak; these are goals, not measured results.
+The Node function spawns the Rust server bound to loopback only, retains it across warm invocations if the platform permits, and buffers a WAV response. The first-PCM measurement describes internal generation latency, not client playback. The round trip measures the whole audio response. The Rust peak RSS and Node current RSS are separately reported. Compare repeated 'book' and the three-word phrase against Kokoro. No performance target is assumed to be met until verified.
 
-Model and runtime downloads are not committed. The upstream model revision defaults to main; set KOKORO_REVISION during build to pin a tested revision. Direct dependencies are pinned; a lockfile should be committed after a successful installation.
+The release binary's libc compatibility, process spawning, bundled asset permissions and server reuse must be validated on Netlify. No change to the production app.
+
+Upstream: https://github.com/kyutai-labs/pocket-tts/tree/v4.0.0 (MIT).
