@@ -5,7 +5,7 @@ import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 import { resolve } from 'node:path';
 const out=resolve('models/pocket');
-const tag='v4.0.0', lang='english_7m_2026-10';
+const tag='v4.0.0', lang='english_18m_2026-10';
 const upstream='https://github.com/kyutai-labs/pocket-tts';
 const hub='https://huggingface.co/kyutai/pocket-tts-without-voice-cloning/resolve/';
 const weightsRevision='08ffc58775e62aad9409511b9591c9af626270f3';
