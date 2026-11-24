@@ -1,8 +1,8 @@
-name: Pocket TTS Rust smoke test
+name: Pocket TTS 18M Rust smoke test
 on:
   workflow_dispatch:
   push:
-    branches: [experiment/pocket-tts]
+    branches: [experiment/pocket-tts-18m]
   pull_request:
     branches: [main]
 permissions:
