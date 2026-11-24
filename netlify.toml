@@ -5,9 +5,7 @@
 
 [build.environment]
   NODE_VERSION = "22"
-  ONNXRUNTIME_NODE_INSTALL_CUDA = "skip"
 
 [functions.tts]
   node_bundler = "esbuild"
-  external_node_modules = ["kokoro-js", "@huggingface/transformers", "onnxruntime-node", "phonemizer"]
-  included_files = ["models/**", "node_modules/kokoro-js/voices/**"]
+  included_files = ["models/pocket/**"]
