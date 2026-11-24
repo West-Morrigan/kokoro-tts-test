@@ -1,6 +1,6 @@
 # Pocket TTS experiment
 
-This branch tests Kyutai Pocket TTS English 6.9M, using the upstream standalone Linux Rust server (release v4.0.0) and its predefined Alba voice. No Python, PyTorch, ONNX or generated-audio storage. Main remains the Kokoro benchmark.
+This branch tests Kyutai Pocket TTS English 18.2M, using the upstream standalone Linux Rust server (release v4.0.0) and its predefined Alba voice. No Python, PyTorch, ONNX or generated-audio storage. Main remains the Kokoro benchmark; experiment/pocket-tts remains the 7M benchmark.
 
 ## Build and run
 
