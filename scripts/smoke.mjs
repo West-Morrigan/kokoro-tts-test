@@ -1,15 +1,21 @@
-import {env} from '@huggingface/transformers';
-import {KokoroTTS} from 'kokoro-js';
-import {performance} from 'node:perf_hooks';
-import {resolve,sep} from 'node:path';
-env.localModelPath=resolve('models')+sep;
-env.allowLocalModels=true;env.allowRemoteModels=false;env.useFSCache=false;
-const start=performance.now();
-const tts=await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',{dtype:'q8',device:'cpu'});
-console.log('Model initialized in',Math.round(performance.now()-start),'ms');
-for (const text of ['Thursday','comfortable','I read a book yesterday.']) {
- const t=performance.now();
- const audio=await tts.generate(text,{voice:'bf_emma',speed:1});
- if (!audio.audio?.length || audio.sampling_rate!==24000 || !audio.audio.every(Number.isFinite)) throw Error('Invalid audio');
- console.log(JSON.stringify({text,ms:Math.round(performance.now()-t),samples:audio.audio.length,rssMB:Math.round(process.memoryUsage().rss/1048576),peakMB:Math.round(process.resourceUsage().maxRSS/1024)}));
+import assert from 'node:assert/strict';
+const key='local-smoke-test-key-not-a-real-secret';
+globalThis.Netlify={env:{get:name=>name==='TTS_TEST_KEY'?key:undefined}};
+const {default:handler}=await import('../netlify/functions/tts.mts');
+for (const [index,text] of ['Thursday','comfortable','I read a book yesterday.'].entries()) {
+  const response=await handler(new Request('http://localhost/api/tts',{
+    method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+    body:JSON.stringify({text,voice:'bf_emma',speed:1})
+  }));
+  if(!response.ok) throw Error('Smoke request failed: '+await response.text());
+  const stats=JSON.parse(response.headers.get('X-TTS-Stats'));
+  const wav=Buffer.from(await response.arrayBuffer());
+  assert.equal(wav.toString('ascii',0,4),'RIFF');
+  assert.equal(wav.toString('ascii',8,12),'WAVE');
+  assert.equal(wav.readUInt32LE(24),24000);
+  assert.ok(wav.length>44);
+  assert.equal(stats.threads,1);
+  assert.equal(stats.cold,index===0);
+  for(const k of ['preprocess','modelStage','cpuMs','cpuRatio','synthesis']) assert.ok(Number.isFinite(stats[k])&&stats[k]>=0,k);
+  console.log(JSON.stringify({text,...stats}));
 }
